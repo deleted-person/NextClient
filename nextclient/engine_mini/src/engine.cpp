@@ -64,6 +64,7 @@
 #include "cstrike_hack.h"
 #include "client/cl_sound.h"
 #include "client/ncl_entity/PlayerSyncSystem.h"
+#include "client/voice.h"
 
 NextClientVersion g_NextClientVersion;
 
@@ -331,6 +332,10 @@ static void OnGameUninitializing()
     CL_NclEntitySyncOverlayShutdown();
     CL_NclEntitySyncShutdown();
 
+    // Stop the voice intercept before the svc_voicedata subscriber goes away, so no decode can
+    // reach a closed playback device.
+    Voice_Shutdown();
+
     for (auto &unsubscriber : g_Unsubs)
         unsubscriber->Unsubscribe();
     g_Unsubs.clear();
@@ -571,6 +576,16 @@ static void OnGameInitializing(void* mainwindow, HDC* pmaindc, HGLRC* pbaseRC, c
         next->Invoke();
     });
 
+    g_Unsubs.emplace_back(eng()->SVC_VoiceData |= [](const auto& next) {
+        int read_count = *pMsg_readcount;
+        int slot = MSG_ReadByte();
+        *pMsg_readcount = read_count;
+
+        Voice_BeginIncoming(slot);
+        next->Invoke();
+        Voice_BeginIncoming(-1);
+    });
+
     g_Unsubs.emplace_back(eng()->CL_HTTPCancel_f += []() {
         CL_HTTPCancel_f();
     });
@@ -720,6 +735,7 @@ static void OnGameInitialized()
     CL_NclEntitySyncOverlayInit();
     PROTECTOR_Init(g_SettingGuard);
     DiscordPresence_Init();
+    Voice_Init();
 }
 
 class EngineMini : public EngineMiniInterface

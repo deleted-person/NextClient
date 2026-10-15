@@ -370,5 +370,6 @@ namespace nitroapi
         RegisterFuncCdecl<StaticHookId::SVC_SendCvarValue>(&engine_data_->SVC_SendCvarValue, [this](nitro_utils::SysModule hModule){return (uint32_t)FindEngineMsgByName(engine_data_->EngineMsgBase, "svc_sendcvarvalue")->pfn;});
         RegisterFuncCdecl<StaticHookId::SVC_UpdateUserInfo>(&engine_data_->SVC_UpdateUserInfo, [this](nitro_utils::SysModule hModule){return (uint32_t)FindEngineMsgByName(engine_data_->EngineMsgBase, "svc_updateuserinfo")->pfn;});
         RegisterFuncCdecl<StaticHookId::SVC_TimeScale>(&engine_data_->SVC_TimeScale, [this](nitro_utils::SysModule hModule){return (uint32_t)FindEngineMsgByName(engine_data_->EngineMsgBase, "svc_timescale")->pfn;});
+        RegisterFuncCdecl<StaticHookId::SVC_VoiceData>(&engine_data_->SVC_VoiceData, [this](nitro_utils::SysModule hModule){return (uint32_t)FindEngineMsgByName(engine_data_->EngineMsgBase, "svc_voicedata")->pfn;});
     }
 }

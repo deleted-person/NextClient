@@ -19,6 +19,7 @@ add_executable(${TARGET_NAME}
         MasterListCacheTests.cpp
         ServerCountryTests.cpp
         TextureProcessingTests.cpp
+        VoiceGainTests.cpp
         WavefrontParserTests.cpp
         mocks/CmdCheckerConfigProviderMock.h
         mocks/LoggerMock.h
