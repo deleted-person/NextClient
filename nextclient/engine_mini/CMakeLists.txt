@@ -82,6 +82,7 @@ if (WIN32)
             wbemuuid
             ole32
             oleaut32
+            winmm # PlaySound for the background push-to-talk blips
     )
 endif ()
 
