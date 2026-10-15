@@ -1,5 +1,6 @@
 #include "text_surface.h"
 
+#include <algorithm>
 #include <unordered_map>
 
 #include <Windows.h>
@@ -37,6 +38,10 @@ namespace
 
     std::unordered_map<unsigned long, SurfaceFont> g_Fonts;
     void* g_OriginalSlots[90];
+
+    // The engine surface object the slots belong to; the native fallback for an uncovered codepoint
+    // calls its original slots directly, without a hook frame to carry `self`.
+    void* g_Surface = nullptr;
 
     template <class Result, class... Args>
     Result CallOriginal(int slot, void* self, void* edx, Args... args)
@@ -243,25 +248,86 @@ namespace
         }
     }
 
-    void DrawGlyph(wchar_t ch)
+    enum class GlyphDraw
+    {
+        Drawn,
+        Uncovered, // no face in the chain has it; the surface draws it through the engine
+        Pending,   // transient miss, retry on a later frame
+    };
+
+    const TextGlyph* LookupGlyph(TextFont_t font, wchar_t ch)
     {
         TextRenderInterface* service = TextRender_Get();
-        const TextGlyph* e = service ? service->GetGlyph(g_CurrentFont, static_cast<uint32_t>(ch)) : nullptr;
+        return service ? service->GetGlyph(font, static_cast<uint32_t>(ch)) : nullptr;
+    }
+
+    bool IsUncovered(TextFont_t font, wchar_t ch)
+    {
+        const TextGlyph* e = LookupGlyph(font, ch);
+        return e != nullptr && !e->covered;
+    }
+
+    void AppendGlyph(const TextGlyph& e)
+    {
+        if (e.renderable && g_TextColor[3] != 0)
+        {
+            AppendCell(e, g_TextX + e.bearing_x, g_TextY + e.bearing_y);
+        }
+
+        g_TextX += e.advance;
+    }
+
+    GlyphDraw DrawGlyph(wchar_t ch)
+    {
+        const TextGlyph* e = LookupGlyph(g_CurrentFont, ch);
 
         g_Stats.glyphs_asked++;
 
         if (!e)
         {
             g_Stats.glyphs_missing++;
-            return; // no cell yet: it resolves on a later draw
+            return GlyphDraw::Pending; // no cell yet: it resolves on a later draw
         }
 
-        if (e->renderable && g_TextColor[3] != 0)
+        if (!e->covered)
         {
-            AppendCell(*e, g_TextX + e->bearing_x, g_TextY + e->bearing_y);
+            return GlyphDraw::Uncovered;
         }
 
-        g_TextX += e->advance;
+        AppendGlyph(*e);
+        return GlyphDraw::Drawn;
+    }
+
+    // The atlas chain has no face for the codepoint, so the engine's own draw resolves it through GDI
+    // system font linking, exactly as stock did. The pen is synced both ways: custom draws advance
+    // g_TextX without telling the surface, and the native draw advances the surface's.
+    void DrawUncoveredChar(wchar_t ch, bool additive)
+    {
+        if (!g_Surface)
+        {
+            return;
+        }
+
+        // Any pending atlas quads must land before the native draw, which changes the GL state.
+        FlushBatch();
+
+        CallOriginal<void>(16, g_Surface, nullptr, g_TextX, g_TextY);
+        CallOriginal<void>(additive ? 20 : 19, g_Surface, nullptr, ch);
+        CallOriginal<void>(17, g_Surface, nullptr, &g_TextX, &g_TextY);
+    }
+
+    void ApplyRunGlState(bool additive)
+    {
+        if (!GlReady())
+        {
+            return;
+        }
+
+        qglEnable(GL_TEXTURE_2D);
+        qglDisable(GL_ALPHA_TEST);
+        qglEnable(GL_BLEND);
+        qglBlendFunc(GL_SRC_ALPHA, additive ? GL_ONE : GL_ONE_MINUS_SRC_ALPHA);
+        qglTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
     }
 
     // The engine's HUD/2D pass leaves GL_ALPHA_TEST on, which clips the glyph's antialiased
@@ -282,11 +348,7 @@ namespace
         qglGetIntegerv(GL_BLEND_SRC, &g_PrevBlendSrc);
         qglGetIntegerv(GL_BLEND_DST, &g_PrevBlendDst);
 
-        qglEnable(GL_TEXTURE_2D);
-        qglDisable(GL_ALPHA_TEST);
-        qglEnable(GL_BLEND);
-        qglBlendFunc(GL_SRC_ALPHA, additive ? GL_ONE : GL_ONE_MINUS_SRC_ALPHA);
-        qglTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+        ApplyRunGlState(additive);
     }
 
     // No batch may outlive the call that filled it, or it composites over a later draw.
@@ -422,7 +484,11 @@ namespace
             BeginTextRun(false);
             for (int i = 0; i < text_len; i++)
             {
-                DrawGlyph(text[i]);
+                if (DrawGlyph(text[i]) == GlyphDraw::Uncovered)
+                {
+                    DrawUncoveredChar(text[i], false);
+                    ApplyRunGlState(false);
+                }
             }
             EndTextRun();
         }
@@ -430,6 +496,13 @@ namespace
         void DrawUnicodeChar(wchar_t ch)
         {
             g_Stats.char_calls++;
+
+            if (IsUncovered(g_CurrentFont, ch))
+            {
+                DrawUncoveredChar(ch, false);
+                return;
+            }
+
             BeginTextRun(false);
             DrawGlyph(ch);
             EndTextRun();
@@ -438,6 +511,13 @@ namespace
         void DrawUnicodeCharAdd(wchar_t ch)
         {
             g_Stats.char_calls++;
+
+            if (IsUncovered(g_CurrentFont, ch))
+            {
+                DrawUncoveredChar(ch, true);
+                return;
+            }
+
             BeginTextRun(true);
             DrawGlyph(ch);
             EndTextRun();
@@ -534,12 +614,22 @@ namespace
             return CallOriginal<void>(63, self, edx, NativeFont(font), ch, a, b, c);
         }
 
+        if (IsUncovered(static_cast<TextFont_t>(font), static_cast<wchar_t>(ch)))
+        {
+            return CallOriginal<void>(63, self, edx, NativeFont(font), ch, a, b, c);
+        }
+
         return g_TextSurface.GetCharABCwide(font, ch, a, b, c);
     }
 
     int __fastcall Hook_GetCharacterWidth(void* self, void* edx, unsigned long font, int ch)
     {
         if (!IsCustomFont(font))
+        {
+            return CallOriginal<int>(64, self, edx, NativeFont(font), ch);
+        }
+
+        if (IsUncovered(static_cast<TextFont_t>(font), static_cast<wchar_t>(ch)))
         {
             return CallOriginal<int>(64, self, edx, NativeFont(font), ch);
         }
@@ -554,12 +644,55 @@ namespace
             return CallOriginal<void>(65, self, edx, NativeFont(font), text, wide, tall);
         }
 
-        return g_TextSurface.GetTextSize(font, text, wide, tall);
+        TextRenderInterface* service = TextRender_Get();
+
+        if (!service)
+        {
+            *wide = 0;
+            *tall = 0;
+            return;
+        }
+
+        // Mirror the service's layout but take the native advance for a codepoint the atlas chain
+        // cannot cover, so the measured width matches what the native fallback actually draws.
+        TextFont_t handle = static_cast<TextFont_t>(font);
+        int line_height = service->GetLineHeight(handle);
+        int line_wide = 0;
+        int max_wide = 0;
+        int total_tall = line_height;
+
+        for (const wchar_t* cursor = text; cursor != nullptr && *cursor != L'\0'; cursor++)
+        {
+            if (*cursor == L'\n')
+            {
+                max_wide = std::max(max_wide, line_wide);
+                line_wide = 0;
+                total_tall += line_height;
+                continue;
+            }
+
+            if (IsUncovered(handle, *cursor))
+            {
+                line_wide += CallOriginal<int>(64, self, edx, NativeFont(font), static_cast<int>(*cursor));
+            }
+            else
+            {
+                line_wide += service->GetCharacterWidth(handle, static_cast<uint32_t>(*cursor));
+            }
+        }
+
+        *wide = std::max(max_wide, line_wide);
+        *tall = total_tall;
     }
 
     int __fastcall Hook_GetFontAscent(void* self, void* edx, unsigned long font, wchar_t ch)
     {
         if (!IsCustomFont(font))
+        {
+            return CallOriginal<int>(89, self, edx, NativeFont(font), ch);
+        }
+
+        if (IsUncovered(static_cast<TextFont_t>(font), ch))
         {
             return CallOriginal<int>(89, self, edx, NativeFont(font), ch);
         }
@@ -758,6 +891,7 @@ namespace
         }
 
         g_Installed = true;
+        g_Surface = surface;
 
         void** vt = *reinterpret_cast<void***>(surface);
         g_SurfaceVtable = vt;
@@ -808,6 +942,7 @@ void TextSurface_Uninstall()
     g_Fonts.clear();
     g_PatchedCount = 0;
     g_SurfaceVtable = nullptr;
+    g_Surface = nullptr;
     g_OrigPushMakeCurrent = nullptr;
     g_OrigPopMakeCurrent = nullptr;
     g_Installed = false;

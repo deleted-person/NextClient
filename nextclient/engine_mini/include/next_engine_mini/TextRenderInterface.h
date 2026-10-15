@@ -36,6 +36,9 @@ struct TextGlyph
     int bearing_x, bearing_y; // pen origin to cell corner
     int advance;
     bool renderable;
+    // False when no face in the chain covers the codepoint. The caller must then draw it through the
+    // engine's native path, which resolves it through GDI system font linking instead of a .notdef box.
+    bool covered = true;
 };
 
 class TextRenderInterface
@@ -55,7 +58,7 @@ public:
     virtual bool AddFallbackFace(TextFont_t font, const char* face) = 0;
 
     // nullptr is transient (no atlas room), retry on a later frame; renderable == false is the
-    // permanent answer for a codepoint with no ink or no covering face.
+    // permanent answer for a codepoint with no ink, and covered == false for one no face covers.
     virtual const TextGlyph* GetGlyph(TextFont_t font, uint32_t codepoint) = 0;
 
     virtual int GetLineHeight(TextFont_t font) = 0;

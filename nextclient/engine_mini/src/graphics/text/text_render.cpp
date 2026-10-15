@@ -394,7 +394,10 @@ namespace
                 return 0;
             }
 
-            return ResolveFace(fonts_[font], codepoint)->ascent();
+            const FontFace* face = ResolveFace(fonts_[font], codepoint);
+
+            // Uncovered codepoints have no covering face; the primary's ascent is the line reference.
+            return face ? face->ascent() : fonts_[font].faces[0]->ascent();
         }
 
         bool AddFallbackFace(TextFont_t font, const char* face) override
@@ -653,7 +656,8 @@ namespace
                 }
             }
 
-            return font.faces[0].get();
+            // nullptr, not faces[0]: rasterizing the primary face here would draw its .notdef box.
+            return nullptr;
         }
 
         // False only for a transient failure, so the caller knows not to cache the miss.
@@ -661,6 +665,23 @@ namespace
         {
             Font& font = fonts_[handle];
             const FontFace* face = ResolveFace(font, codepoint);
+
+            if (!face)
+            {
+                // No face covers it, so no ink is baked: the surface draws it through the engine,
+                // which resolves the glyph through GDI system font linking instead of a .notdef box.
+                // The primary face's advance is kept so a service-side layout still spaces the run.
+                RasterGlyph placeholder{};
+
+                if (font.faces[0]->Rasterize(codepoint, &placeholder))
+                {
+                    out->advance = placeholder.advance;
+                }
+
+                out->renderable = false;
+                out->covered = false;
+                return true;
+            }
 
             RasterGlyph raster{};
 
