@@ -8,6 +8,7 @@
 #include "console/console.h"
 
 #include <SDL.h>
+#include <cvars/cvar_defaults.h>
 #include <easylogging++.h>
 #include <funchook.h>
 #include <steam/steam_api.h>
@@ -44,12 +45,14 @@ namespace
     bool g_initialized = false;
     bool g_sdl_audio_initialized = false;
     bool g_status_registered = false;
+    bool g_cvar_registered = false;
     int g_incoming_slot = -1;
     long long g_incoming_packets = 0;
     long long g_decoded_packets = 0;
 
     goldsrc::cvar_t* g_voice_scale = nullptr;
     goldsrc::cvar_t* g_voice_enable = nullptr;
+    goldsrc::cvar_t* g_voice_background = nullptr;
 
     funchook_t* g_funchook = nullptr;
     void* g_trampoline = nullptr;
@@ -67,6 +70,12 @@ namespace
     bool IsVoiceEnabled()
     {
         return g_voice_enable == nullptr || g_voice_enable->value != 0.0f;
+    }
+
+    // The private path is a NextClient feature; with it off the engine plays voice as it always did.
+    bool IsBackgroundEnabled()
+    {
+        return g_voice_background == nullptr || g_voice_background->value != 0.0f;
     }
 
     // SDL 2.0.0 has no queue API, so the callback drains a buffer that the decode hook appends to.
@@ -182,6 +191,8 @@ namespace
 
         Con_Printf("  voice_enable %s\n",
             g_voice_enable == nullptr ? "missing" : (g_voice_enable->value != 0.0f ? "on" : "off"));
+        Con_Printf("  voice_background %s\n",
+            g_voice_background == nullptr ? "missing" : (g_voice_background->value != 0.0f ? "on" : "off"));
         Con_Printf("  incoming %lld packets, decoded %lld, current slot %d\n", g_incoming_packets, g_decoded_packets, g_incoming_slot);
 
         for (int i = 0; i < kChannelCount; ++i)
@@ -259,6 +270,12 @@ void Voice_Init()
         // command table is the one that still accepts registrations here.
         gEngfuncs.pfnAddCommand("voice_status", VoiceStatus_f);
         g_status_registered = true;
+    }
+
+    if (!g_cvar_registered)
+    {
+        g_voice_background = gEngfuncs.pfnRegisterVariable(cvars::kVoiceBackground.name, cvars::kVoiceBackground.value, goldsrc::FCVAR_ARCHIVE);
+        g_cvar_registered = true;
     }
 
     if (g_initialized)
@@ -376,7 +393,7 @@ void Voice_Shutdown()
 
 void Voice_BeginIncoming(int slot)
 {
-    bool armed = g_initialized && IsVoiceEnabled() && slot >= 0;
+    bool armed = g_initialized && IsVoiceEnabled() && IsBackgroundEnabled() && slot >= 0;
 
     if (armed)
     {
