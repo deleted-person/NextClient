@@ -6,6 +6,7 @@
 #include <vgui_controls/ImagePanel.h>
 #include <vgui_controls/CheckButton.h>
 #include <vgui_controls/Slider.h>
+#include <cvars/cvar_defaults.h>
 #include <goldsrc/client_api.h>
 #include <goldsrc/voice_tweak.h>
 #include "CvarToggleCheckButton.h"
@@ -28,6 +29,8 @@ COptionsSubVoice::COptionsSubVoice(vgui2::Panel *parent) : PropertyPage(parent, 
     m_pMicrophoneVolume->AddActionSignalTarget(this);
 
     m_pVoiceEnableCheckButton = new CCvarToggleCheckButton(this, "voice_modenable", "#GameUI_EnableVoice", "voice_modenable");
+    m_pVoicePttCheckButton =
+        new CCvarToggleCheckButton(this, cvars::kVoiceBackgroundPtt.name, "#GameUI_VoiceBackgroundPtt", cvars::kVoiceBackgroundPtt.name);
 
     m_pMicBoost = new vgui2::CheckButton(this, "MicBoost", "#GameUI_BoostMicrophone");
     m_pMicBoost->AddActionSignalTarget(this);
@@ -41,6 +44,13 @@ COptionsSubVoice::COptionsSubVoice(vgui2::Panel *parent) : PropertyPage(parent, 
 
     m_bVoiceOn = false;
     m_pMicMeter2->SetVisible(false);
+
+    // The background push-to-talk path lives in engine_mini and is Windows-only, so hide the option
+    // where its cvar was never registered.
+    if (!engine->pfnGetCvarPointer(cvars::kVoiceBackgroundPtt.name))
+    {
+        m_pVoicePttCheckButton->SetVisible(false);
+    }
 
     if (!m_pVoiceTweak)
     {
@@ -64,6 +74,9 @@ void COptionsSubVoice::OnPageShow(void)
 
 void COptionsSubVoice::OnResetData(void)
 {
+    // This option does not depend on the microphone, and the voice tweak is absent without one.
+    m_pVoicePttCheckButton->Reset();
+
     if (!m_pVoiceTweak)
         return;
 
@@ -104,6 +117,8 @@ void COptionsSubVoice::OnCheckButtonChecked(int state)
 
 void COptionsSubVoice::OnApplyChanges(void)
 {
+    m_pVoicePttCheckButton->ApplyChanges();
+
     if (!m_pVoiceTweak)
         return;
 
