@@ -130,4 +130,19 @@ TEST_P(TextRenderShadowTest, ShadowPreservesTheBlendedFillCoverage)
     }
 }
 
+TEST_P(TextRenderShadowTest, UncoveredCodepointIsNotBaked)
+{
+    TextRenderInterface* renderer = TextRender_Get();
+    TextFontDesc desc{"Arial", 19, 400, GetParam(), TextGlyphFormat::Coverage};
+    TextFont_t font = renderer->FindOrCreateFont(desc);
+    ASSERT_NE(font, kInvalidTextFont);
+
+    // U+0378 is unassigned, so no face in the chain covers it. It must come back as uncovered rather
+    // than bake the primary face's .notdef box, which is what left squares in server menu text.
+    const TextGlyph* glyph = renderer->GetGlyph(font, 0x0378);
+    ASSERT_NE(glyph, nullptr);
+    EXPECT_FALSE(glyph->covered);
+    EXPECT_FALSE(glyph->renderable);
+}
+
 INSTANTIATE_TEST_SUITE_P(Coverage, TextRenderShadowTest, testing::Values(kTextFontNone, kTextFontAntialias));
