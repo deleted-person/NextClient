@@ -63,6 +63,7 @@
 #include "console/protector.h"
 #include "cstrike_hack.h"
 #include "client/cl_sound.h"
+#include "client/voice_ptt.h"
 #include "client/ncl_entity/PlayerSyncSystem.h"
 #include "client/voice.h"
 
@@ -662,6 +663,7 @@ static void OnGameInitializing(void* mainwindow, HDC* pmaindc, HGLRC* pbaseRC, c
         }
 
         DiscordPresence_Frame();
+        VoicePtt_Frame();
     });
 
     g_Unsubs.emplace_back(eng()->S_StartDynamicSound |= S_StartDynamicSoundHook);
@@ -736,6 +738,7 @@ static void OnGameInitialized()
     PROTECTOR_Init(g_SettingGuard);
     DiscordPresence_Init();
     Voice_Init();
+    VoicePtt_Init();
 }
 
 class EngineMini : public EngineMiniInterface

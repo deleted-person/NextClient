@@ -103,6 +103,25 @@
 		"brighttext"		"0"
 		"Default"		"0"
 	}
+	"cl_voice_background_ptt"
+	{
+		"ControlName"		"CheckButton"
+		"fieldName"		"cl_voice_background_ptt"
+		"xpos"			"246"
+		"ypos"			"234"
+		"wide"			"236"
+		"tall"			"28"
+		"autoResize"		"0"
+		"pinCorner"		"0"
+		"visible"		"1"
+		"enabled"		"1"
+		"tabPosition"		"8"
+		"labelText"		"#GameUI_VoiceBackgroundPtt"
+		"textAlignment"		"west"
+		"dulltext"		"0"
+		"brighttext"		"0"
+		"Default"		"0"
+	}
 	"MicBoost"
 	{
 		"ControlName"		"CheckButton"

@@ -55,6 +55,7 @@ private:
     CCvarSlider *m_pReceiveVolume;
     CCvarToggleCheckButton *m_pVoiceEnableCheckButton;
     CCvarToggleCheckButton *m_pVoiceBackgroundCheckButton;
+    CCvarToggleCheckButton *m_pVoicePttCheckButton;
 
     vgui2::Label *m_pVoiceOverdriveSliderLabel;
     CCvarSlider *m_pVoiceOverdriveSlider;

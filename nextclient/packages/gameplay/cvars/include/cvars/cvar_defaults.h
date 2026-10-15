@@ -38,6 +38,8 @@ namespace cvars
     inline constexpr CvarDefault kDiscordRpcServer{"cl_discordrpc_server", "1"};
     inline constexpr CvarDefault kDiscordRpcJoin{"cl_discordrpc_join", "1"};
     inline constexpr CvarDefault kVoiceBackground{"cl_voice_background", "1"};
+    inline constexpr CvarDefault kVoiceBackgroundPtt{"cl_voice_background_ptt", "1"};
+    inline constexpr CvarDefault kVoiceBackgroundPttKey{"cl_voice_background_ptt_key", "mouse4"};
 
     // registered by the game's own client dll with these values, which the settings UI
     // resets to
@@ -72,6 +74,8 @@ namespace cvars
         kDiscordRpcServer,
         kDiscordRpcJoin,
         kVoiceBackground,
+        kVoiceBackgroundPtt,
+        kVoiceBackgroundPttKey,
         kBob,
         kBobCycle,
         kBobUp,
